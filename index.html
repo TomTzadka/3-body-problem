@@ -215,8 +215,8 @@
 
     <div class="control-row">
       <label>Trail</label>
-      <input type="range" id="trailSlider" min="0" max="20000" step="100" value="350">
-      <span class="val" id="trail-val">350</span>
+      <input type="range" id="trailSlider" min="0" max="20000" step="100" value="20000">
+      <span class="val" id="trail-val">∞</span>
     </div>
 
     <hr class="divider">
@@ -252,6 +252,12 @@
       <button id="pauseBtn">PAUSE</button>
     </div>
 
+    <div class="control-row">
+      <label>Scale</label>
+      <input type="range" id="scaleSlider" min="1" max="8" step="0.5" value="3">
+      <span class="val" id="scale-val">3.0</span>
+    </div>
+
     <select id="choreographySelect">
       <option value="">— CHOREOGRAPHY —</option>
       <option value="figure8">Figure-8</option>
@@ -281,6 +287,24 @@
       <div class="btn-row" style="margin-top:6px">
         <button id="paintModeBtn" class="active">WORLD</button>
         <button id="clearPaintBtn">CLEAR</button>
+      </div>
+
+      <hr class="divider">
+      <div style="font-size:10px;color:#7799cc;letter-spacing:2px;margin-bottom:8px">WIDTH</div>
+      <div class="control-row">
+        <span class="body-dot" style="background:#ff4400;box-shadow:0 0 4px #ff4400"></span>
+        <input type="range" id="bw0" min="1" max="20" step="0.5" value="4">
+        <span class="val" id="bw0-val">4</span>
+      </div>
+      <div class="control-row">
+        <span class="body-dot" style="background:#4488ff;box-shadow:0 0 4px #4488ff"></span>
+        <input type="range" id="bw1" min="1" max="20" step="0.5" value="4">
+        <span class="val" id="bw1-val">4</span>
+      </div>
+      <div class="control-row">
+        <span class="body-dot" style="background:#ffcc00;box-shadow:0 0 4px #ffcc00"></span>
+        <input type="range" id="bw2" min="1" max="20" step="0.5" value="4">
+        <span class="val" id="bw2-val">4</span>
       </div>
     </div>
   </div>

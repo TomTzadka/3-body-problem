@@ -30,16 +30,25 @@ let paused = false;
 let simTime = 0;
 let currentG = G_BASE;
 let speedMult = 1.0;
-let trailVisible = 350;   // how many trail points to show (MAX_HISTORY = all)
+let trailVisible = MAX_HISTORY;  // default: show full history
 let focusedBody = null;   // null | 0 | 1 | 2
 
 // Canvas / paint mode
-let canvasMode       = false;
-let brushStyle       = 0;        // 0=round 1=calligraphy 2=spray 3=ink 4=marker
-let paintMode        = 'world';  // 'world' = body-movement only | 'screen' = includes camera
-let paintCtx         = null;
-let lastPaintPos     = [];       // THREE.Vector2 — last screen pos per body
-let lastPaintWorldPos = [];      // THREE.Vector3 — last WORLD pos per body (for world mode)
+let canvasMode        = false;
+let brushStyle        = 0;          // 0=round 1=calligraphy 2=spray 3=ink 4=marker
+let paintMode         = 'world';
+let paintCtx          = null;
+let lastPaintPos      = [];
+let lastPaintWorldPos = [];
+let brushWidths       = [4, 4, 4];  // per-body brush width
+
+// Choreography scale & drag
+let choreoScale     = 3;
+let draggedBodyIdx  = null;
+const _raycaster    = new THREE.Raycaster();
+const _dragPlane    = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _dragPoint    = new THREE.Vector3();
+const _mouse        = new THREE.Vector2();
 
 const BRUSH_COLORS = ['#cc2200', '#1155ee', '#cc8800'];
 
@@ -178,29 +187,27 @@ function choreographyIC(rawPos, rawVel, s) {
   };
 }
 
-// Šuvakov-style: r1=(-s,0,0) r2=(s,0,0) r3=(0,0,0), v1=v2=(vx,vz), v3=-2*(vx,vz)
-function suvakov(vx, vz, s = 5) {
+// Šuvakov-style: uses choreoScale global
+function suvakov(vx, vz) {
   return choreographyIC(
     [[-1, 0], [1, 0], [0, 0]],
     [[vx, vz], [vx, vz], [-2 * vx, -2 * vz]],
-    s
+    choreoScale
   );
 }
 
 const CHOREOGRAPHIES = {
-  // Chenciner & Montgomery 2000 — three bodies chase each other on a figure-8
-  figure8: () => choreographyIC(
+  figure8:    () => choreographyIC(
     [[-0.97000436, 0.24308753], [0.97000436, -0.24308753], [0, 0]],
-    [[0.46620369, 0.43236573], [0.46620369, 0.43236573], [-0.93240737, -0.86473146]],
-    5
+    [[0.46620369,  0.43236573], [0.46620369,  0.43236573], [-0.93240737, -0.86473146]],
+    choreoScale
   ),
-  // Šuvakov & Dmitrašinović 2013 — periodic planar choreographies
-  butterfly1:  () => suvakov(0.30689,  0.12551),
-  butterfly2:  () => suvakov(0.39295,  0.09758),
-  moth1:       () => suvakov(0.46444,  0.39606),
-  moth2:       () => suvakov(0.43917,  0.45297),
-  dragonfly:   () => suvakov(0.08330,  0.12789),
-  braid:       () => suvakov(0.13333,  0.17069),
+  butterfly1: () => suvakov(0.30689,  0.12551),
+  butterfly2: () => suvakov(0.39295,  0.09758),
+  moth1:      () => suvakov(0.46444,  0.39606),
+  moth2:      () => suvakov(0.43917,  0.45297),
+  dragonfly:  () => suvakov(0.08330,  0.12789),
+  braid:      () => suvakov(0.13333,  0.17069),
 };
 
 // ─── Glow Texture ─────────────────────────────────────────────────────────────
@@ -237,7 +244,34 @@ function clearPaintCanvas() {
   const pc = document.getElementById('paintCanvas');
   if (!paintCtx) return;
   paintCtx.clearRect(0, 0, pc.width, pc.height);
-  // transparent — 3D scene background shows through
+}
+
+// Paint the full trail ring-buffer history onto the canvas in one pass.
+// Called when entering canvas mode so accumulated space-mode history is visible.
+function replayHistoryToCanvas() {
+  if (!paintCtx) return;
+  clearPaintCanvas();
+  for (let i = 0; i < bodies.length; i++) {
+    const trail = bodies[i].trail;
+    if (trail.total < 2) continue;
+    const startSlot = (trail.head - trail.total + MAX_HISTORY * 2) % MAX_HISTORY;
+    let prev = null;
+    for (let j = 0; j < trail.total; j++) {
+      const slot = (startSlot + j) % MAX_HISTORY;
+      const wp = new THREE.Vector3(
+        trail.hist[slot * 3], trail.hist[slot * 3 + 1], trail.hist[slot * 3 + 2]
+      );
+      const sp = worldToScreen(wp);
+      if (prev) drawBrushStroke(i, prev, sp);
+      prev = sp;
+    }
+    // Sync last-position trackers to avoid a streak on first new frame
+    const lastSlot = (trail.head - 1 + MAX_HISTORY) % MAX_HISTORY;
+    lastPaintWorldPos[i] = new THREE.Vector3(
+      trail.hist[lastSlot * 3], trail.hist[lastSlot * 3 + 1], trail.hist[lastSlot * 3 + 2]
+    );
+    lastPaintPos[i] = worldToScreen(lastPaintWorldPos[i]);
+  }
 }
 
 function drawBrushStroke(idx, from, to) {
@@ -250,13 +284,15 @@ function drawBrushStroke(idx, from, to) {
 
   ctx.save();
 
+  const bw = brushWidths[idx];
+
   switch (brushStyle) {
     case 0: // Round
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.lineTo(to.x, to.y);
       ctx.strokeStyle = color;
-      ctx.lineWidth = 5;
+      ctx.lineWidth = bw;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.globalAlpha = 0.85;
@@ -265,7 +301,7 @@ function drawBrushStroke(idx, from, to) {
 
     case 1: { // Calligraphy — width varies with angle
       const angle = Math.atan2(dy, dx);
-      const w = Math.abs(Math.sin(angle - Math.PI / 4)) * 12 + 1;
+      const w = Math.abs(Math.sin(angle - Math.PI / 4)) * bw * 2.5 + 1;
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.lineTo(to.x, to.y);
@@ -285,12 +321,12 @@ function drawBrushStroke(idx, from, to) {
         const t = s / steps;
         const cx = from.x + dx * t;
         const cy = from.y + dy * t;
-        const r = 12;
+        const r = bw * 3;
         for (let k = 0; k < 12; k++) {
           const a = Math.random() * Math.PI * 2;
           const rr = Math.random() * r;
           ctx.beginPath();
-          ctx.arc(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, 1 + Math.random() * 1.5, 0, Math.PI * 2);
+          ctx.arc(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, 1 + Math.random() * (bw * 0.3), 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -302,10 +338,10 @@ function drawBrushStroke(idx, from, to) {
       ctx.moveTo(from.x, from.y);
       ctx.lineTo(to.x, to.y);
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = Math.max(0.5, bw * 0.4);
       ctx.lineCap = 'round';
       ctx.globalAlpha = 0.95;
-      ctx.shadowBlur = 5;
+      ctx.shadowBlur = bw;
       ctx.shadowColor = color;
       ctx.stroke();
       break;
@@ -315,7 +351,7 @@ function drawBrushStroke(idx, from, to) {
       ctx.moveTo(from.x, from.y);
       ctx.lineTo(to.x, to.y);
       ctx.strokeStyle = color;
-      ctx.lineWidth = 16;
+      ctx.lineWidth = bw * 3.5;
       ctx.lineCap = 'square';
       ctx.globalAlpha = 0.22;
       ctx.stroke();
@@ -338,9 +374,9 @@ function toggleCanvasMode() {
     pc.style.height = window.innerHeight + 'px';
     pc.style.display = 'block';
     paintCtx = pc.getContext('2d');
-    clearPaintCanvas();
     lastPaintPos      = bodies.map(b => worldToScreen(b.pos));
     lastPaintWorldPos = bodies.map(b => b.pos.clone());
+    replayHistoryToCanvas();  // fill with full accumulated history
 
     scene.background = new THREE.Color(0xf5f5f0);
     scene.fog = null;
@@ -696,6 +732,53 @@ function saveImage() {
   link.click();
 }
 
+// ─── Drag to Reposition ───────────────────────────────────────────────────────
+
+function initDrag() {
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    _mouse.set(
+      (e.clientX / window.innerWidth)  * 2 - 1,
+      -(e.clientY / window.innerHeight) * 2 + 1
+    );
+    _raycaster.setFromCamera(_mouse, camera);
+    for (let i = 0; i < bodies.length; i++) {
+      if (_raycaster.intersectObject(bodies[i].mesh, true).length > 0) {
+        draggedBodyIdx = i;
+        _dragPlane.constant = -bodies[i].pos.y;
+        controls.enabled = false;
+        e.stopPropagation();
+        break;
+      }
+    }
+  });
+
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    if (draggedBodyIdx === null) return;
+    _mouse.set(
+      (e.clientX / window.innerWidth)  * 2 - 1,
+      -(e.clientY / window.innerHeight) * 2 + 1
+    );
+    _raycaster.setFromCamera(_mouse, camera);
+    if (_raycaster.ray.intersectPlane(_dragPlane, _dragPoint)) {
+      const b = bodies[draggedBodyIdx];
+      b.pos.set(_dragPoint.x, b.pos.y, _dragPoint.z);
+      b.vel.set(0, 0, 0);
+      b.mesh.position.copy(b.pos);
+      b.trail.reset();
+      if (lastPaintWorldPos[draggedBodyIdx]) lastPaintWorldPos[draggedBodyIdx].copy(b.pos);
+      if (lastPaintPos[draggedBodyIdx])      lastPaintPos[draggedBodyIdx] = worldToScreen(b.pos);
+    }
+  });
+
+  renderer.domElement.addEventListener('pointerup', () => {
+    if (draggedBodyIdx !== null) {
+      draggedBodyIdx = null;
+      controls.enabled = true;
+    }
+  });
+}
+
 function setFocus(idx) {
   const focusBtns = [0, 1, 2].map(i => document.getElementById(`focus${i}`));
   if (focusedBody === idx) {
@@ -786,12 +869,32 @@ function bindUI() {
     if (!key || !CHOREOGRAPHIES[key]) return;
     focusedBody = null;
     [0, 1, 2].forEach(i => document.getElementById(`focus${i}`).classList.remove('active'));
-    // Choreographies require exact G=1 and m=1
     currentG = 1.0;
     document.getElementById('gSlider').value = '1';
     document.getElementById('g-val').textContent = '1.0';
+    // Show full history so the pattern becomes visible
+    trailVisible = MAX_HISTORY;
+    document.getElementById('trailSlider').value = MAX_HISTORY;
+    document.getElementById('trail-val').textContent = '∞';
     initBodies(CHOREOGRAPHIES[key]());
   });
+
+  // Scale slider (for choreographies)
+  const scaleSlider = document.getElementById('scaleSlider');
+  scaleSlider.addEventListener('input', () => {
+    choreoScale = parseFloat(scaleSlider.value);
+    document.getElementById('scale-val').textContent = choreoScale.toFixed(1);
+  });
+
+  // Brush width per body
+  for (let i = 0; i < 3; i++) {
+    const bwSlider = document.getElementById(`bw${i}`);
+    const bwVal    = document.getElementById(`bw${i}-val`);
+    bwSlider.addEventListener('input', () => {
+      brushWidths[i] = parseFloat(bwSlider.value);
+      bwVal.textContent = brushWidths[i].toFixed(0);
+    });
+  }
 
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -818,6 +921,7 @@ function main() {
   initStarfield();
   initBodies(randomInitialConditions());
   bindUI();
+  initDrag();
   clock = new THREE.Clock();
   animate();
 }
