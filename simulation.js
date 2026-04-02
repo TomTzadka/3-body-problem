@@ -165,26 +165,43 @@ function randomInitialConditions() {
   return { masses, positions, velocities };
 }
 
-function figure8InitialConditions() {
-  // Chenciner-Montgomery figure-8 (scaled to our coordinate system)
-  const s = 6;
-  const positions = [
-    new THREE.Vector3(-0.97000436 * s, 0, 0.24308753 * s),
-    new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3( 0.97000436 * s, 0, -0.24308753 * s),
-  ];
-  const v3x = 0.93240737 * s * 0.18, v3z = 0.86473146 * s * 0.18;
-  const velocities = [
-    new THREE.Vector3( v3x * 0.5, 0,  v3z * 0.5),
-    new THREE.Vector3(-v3x,       0, -v3z      ),
-    new THREE.Vector3( v3x * 0.5, 0,  v3z * 0.5),
-  ];
+// ─── Choreographies ───────────────────────────────────────────────────────────
+// All use G=1, m=1. Positions scaled by s, velocities by 1/√s (physically correct).
+// 2D solutions live in the XZ plane (Y = up in our scene).
+
+function choreographyIC(rawPos, rawVel, s) {
+  const vs = 1 / Math.sqrt(s);
   return {
     masses: [1.0, 1.0, 1.0],
-    positions,
-    velocities,
+    positions: rawPos.map(([x, z]) => new THREE.Vector3(x * s, 0, z * s)),
+    velocities: rawVel.map(([vx, vz]) => new THREE.Vector3(vx * vs, 0, vz * vs)),
   };
 }
+
+// Šuvakov-style: r1=(-s,0,0) r2=(s,0,0) r3=(0,0,0), v1=v2=(vx,vz), v3=-2*(vx,vz)
+function suvakov(vx, vz, s = 5) {
+  return choreographyIC(
+    [[-1, 0], [1, 0], [0, 0]],
+    [[vx, vz], [vx, vz], [-2 * vx, -2 * vz]],
+    s
+  );
+}
+
+const CHOREOGRAPHIES = {
+  // Chenciner & Montgomery 2000 — three bodies chase each other on a figure-8
+  figure8: () => choreographyIC(
+    [[-0.97000436, 0.24308753], [0.97000436, -0.24308753], [0, 0]],
+    [[0.46620369, 0.43236573], [0.46620369, 0.43236573], [-0.93240737, -0.86473146]],
+    5
+  ),
+  // Šuvakov & Dmitrašinović 2013 — periodic planar choreographies
+  butterfly1:  () => suvakov(0.30689,  0.12551),
+  butterfly2:  () => suvakov(0.39295,  0.09758),
+  moth1:       () => suvakov(0.46444,  0.39606),
+  moth2:       () => suvakov(0.43917,  0.45297),
+  dragonfly:   () => suvakov(0.08330,  0.12789),
+  braid:       () => suvakov(0.13333,  0.17069),
+};
 
 // ─── Glow Texture ─────────────────────────────────────────────────────────────
 
@@ -677,9 +694,9 @@ function bindUI() {
   const speedSlider = document.getElementById('speed');
   const gSlider     = document.getElementById('gSlider');
   const trailSlider = document.getElementById('trailSlider');
-  const pauseBtn    = document.getElementById('pauseBtn');
-  const resetBtn    = document.getElementById('resetBtn');
-  const fig8Btn     = document.getElementById('fig8Btn');
+  const pauseBtn           = document.getElementById('pauseBtn');
+  const resetBtn           = document.getElementById('resetBtn');
+  const choreographySelect = document.getElementById('choreographySelect');
 
   speedSlider.addEventListener('input', () => {
     speedMult = parseFloat(speedSlider.value);
@@ -741,13 +758,16 @@ function bindUI() {
   resetBtn.addEventListener('click', () => {
     focusedBody = null;
     [0, 1, 2].forEach(i => document.getElementById(`focus${i}`).classList.remove('active'));
+    choreographySelect.value = '';
     initBodies(randomInitialConditions());
-    fig8Btn.classList.remove('active');
   });
 
-  fig8Btn.addEventListener('click', () => {
-    initBodies(figure8InitialConditions());
-    fig8Btn.classList.add('active');
+  choreographySelect.addEventListener('change', () => {
+    const key = choreographySelect.value;
+    if (!key || !CHOREOGRAPHIES[key]) return;
+    focusedBody = null;
+    [0, 1, 2].forEach(i => document.getElementById(`focus${i}`).classList.remove('active'));
+    initBodies(CHOREOGRAPHIES[key]());
   });
 
   window.addEventListener('resize', () => {

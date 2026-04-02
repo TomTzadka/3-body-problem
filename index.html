@@ -154,6 +154,33 @@
       color: #cce0ff;
     }
 
+    select {
+      width: 100%;
+      margin-top: 8px;
+      padding: 7px 8px;
+      background: rgba(0, 60, 180, 0.3);
+      border: 1px solid rgba(0, 100, 255, 0.4);
+      border-radius: 5px;
+      color: #88aaff;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      letter-spacing: 1px;
+      cursor: pointer;
+      outline: none;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    select:hover {
+      border-color: rgba(0, 150, 255, 0.7);
+      color: #ccddff;
+    }
+
+    select option {
+      background: #000820;
+      color: #88aaff;
+    }
+
     #info {
       position: fixed;
       top: 20px;
@@ -223,8 +250,18 @@
     <div class="btn-row">
       <button id="resetBtn">RESET</button>
       <button id="pauseBtn">PAUSE</button>
-      <button id="fig8Btn">FIGURE-8</button>
     </div>
+
+    <select id="choreographySelect">
+      <option value="">— CHOREOGRAPHY —</option>
+      <option value="figure8">Figure-8</option>
+      <option value="butterfly1">Butterfly I</option>
+      <option value="butterfly2">Butterfly II</option>
+      <option value="moth1">Moth I</option>
+      <option value="moth2">Moth II</option>
+      <option value="dragonfly">Dragonfly</option>
+      <option value="braid">Braid</option>
+    </select>
 
     <div class="btn-row" style="margin-top:8px">
       <button id="canvasModeBtn">CANVAS MODE</button>
