@@ -5,12 +5,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const G_BASE       = 1.0;
 const DT_BASE      = 0.005;
-const SOFTENING    = 0.5;       // physics softening
-const GRID_EPS     = 1.5;       // grid distortion softening
+const SOFTENING    = 0.08;      // physics softening (small = accurate choreographies)
+const GRID_EPS     = 1.5;       // grid distortion softening (visual only)
 const WELL_SCALE   = 1.0;
 const MAX_DIP      = -14;
 const MAX_HISTORY  = 20000;     // maximum trail points stored per body
-const SUBSTEPS     = 8;
+const SUBSTEPS     = 20;        // higher = more accurate integration
 const GRID_SEGS    = 100;       // 101×101 = ~10k vertices
 const GRID_SIZE    = 64;
 
@@ -445,7 +445,7 @@ class Trail {
 
 function initRenderer() {
   const canvas = document.getElementById('canvas');
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -678,6 +678,26 @@ function animate() {
 
 // ─── UI ───────────────────────────────────────────────────────────────────────
 
+function saveImage() {
+  const merged = document.createElement('canvas');
+  merged.width  = window.innerWidth;
+  merged.height = window.innerHeight;
+  const ctx = merged.getContext('2d');
+
+  // Draw the 3D scene
+  ctx.drawImage(renderer.domElement, 0, 0);
+
+  // Overlay the paint canvas if active
+  if (canvasMode && paintCtx) {
+    ctx.drawImage(document.getElementById('paintCanvas'), 0, 0);
+  }
+
+  const link = document.createElement('a');
+  link.download = `three-body-${Date.now()}.png`;
+  link.href = merged.toDataURL('image/png');
+  link.click();
+}
+
 function setFocus(idx) {
   const focusBtns = [0, 1, 2].map(i => document.getElementById(`focus${i}`));
   if (focusedBody === idx) {
@@ -726,6 +746,7 @@ function bindUI() {
   }
 
   document.getElementById('canvasModeBtn').addEventListener('click', toggleCanvasMode);
+  document.getElementById('saveBtn').addEventListener('click', saveImage);
 
   document.getElementById('clearPaintBtn').addEventListener('click', clearPaintCanvas);
 
@@ -767,6 +788,10 @@ function bindUI() {
     if (!key || !CHOREOGRAPHIES[key]) return;
     focusedBody = null;
     [0, 1, 2].forEach(i => document.getElementById(`focus${i}`).classList.remove('active'));
+    // Choreographies require exact G=1 and m=1
+    currentG = 1.0;
+    document.getElementById('gSlider').value = '1';
+    document.getElementById('g-val').textContent = '1.0';
     initBodies(CHOREOGRAPHIES[key]());
   });
 
