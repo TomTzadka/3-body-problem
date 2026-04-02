@@ -34,11 +34,12 @@ let trailVisible = 350;   // how many trail points to show (MAX_HISTORY = all)
 let focusedBody = null;   // null | 0 | 1 | 2
 
 // Canvas / paint mode
-let canvasMode  = false;
-let brushStyle  = 0;        // 0=round 1=calligraphy 2=spray 3=ink 4=marker
-let paintMode   = 'world';  // 'world' = fixed XZ projection | 'screen' = live camera
-let paintCtx    = null;
-let lastPaintPos = [];      // THREE.Vector2 per body (screen or canvas coords)
+let canvasMode       = false;
+let brushStyle       = 0;        // 0=round 1=calligraphy 2=spray 3=ink 4=marker
+let paintMode        = 'world';  // 'world' = body-movement only | 'screen' = includes camera
+let paintCtx         = null;
+let lastPaintPos     = [];       // THREE.Vector2 — last screen pos per body
+let lastPaintWorldPos = [];      // THREE.Vector3 — last WORLD pos per body (for world mode)
 
 const BRUSH_COLORS = ['#cc2200', '#1155ee', '#cc8800'];
 
@@ -214,19 +215,6 @@ function worldToScreen(pos) {
   );
 }
 
-// Fixed top-down XZ projection (painting is independent of camera)
-function worldToCanvas(pos) {
-  const pc = document.getElementById('paintCanvas');
-  const scale = Math.min(pc.width, pc.height) / GRID_SIZE;
-  return new THREE.Vector2(
-    pc.width  / 2 + pos.x * scale,
-    pc.height / 2 + pos.z * scale   // z → vertical axis on canvas
-  );
-}
-
-function getPaintPos(pos) {
-  return paintMode === 'world' ? worldToCanvas(pos) : worldToScreen(pos);
-}
 
 function clearPaintCanvas() {
   const pc = document.getElementById('paintCanvas');
@@ -334,7 +322,8 @@ function toggleCanvasMode() {
     pc.style.display = 'block';
     paintCtx = pc.getContext('2d');
     clearPaintCanvas();
-    lastPaintPos = bodies.map(b => getPaintPos(b.pos));
+    lastPaintPos      = bodies.map(b => worldToScreen(b.pos));
+    lastPaintWorldPos = bodies.map(b => b.pos.clone());
 
     scene.background = new THREE.Color(0xf5f5f0);
     scene.fog = null;
@@ -644,9 +633,20 @@ function animate() {
   // Paint brush strokes on 2D canvas
   if (canvasMode && paintCtx) {
     for (let i = 0; i < bodies.length; i++) {
-      const cur = getPaintPos(bodies[i].pos);
-      drawBrushStroke(i, lastPaintPos[i], cur);
-      lastPaintPos[i] = cur;
+      const curScreen = worldToScreen(bodies[i].pos);
+
+      if (paintMode === 'world') {
+        // Re-project stored world pos through current camera as "from"
+        // → only body movement draws, camera rotation draws nothing
+        const fromScreen = worldToScreen(lastPaintWorldPos[i]);
+        drawBrushStroke(i, fromScreen, curScreen);
+        lastPaintWorldPos[i].copy(bodies[i].pos);
+        lastPaintPos[i] = curScreen;
+      } else {
+        // SCREEN mode: use stored screen pos directly
+        drawBrushStroke(i, lastPaintPos[i], curScreen);
+        lastPaintPos[i] = curScreen;
+      }
     }
   }
 
@@ -718,7 +718,10 @@ function bindUI() {
     paintModeBtn.textContent = paintMode === 'world' ? 'WORLD' : 'SCREEN';
     paintModeBtn.classList.toggle('active', paintMode === 'world');
     // reset last positions to avoid streak on mode switch
-    if (canvasMode) lastPaintPos = bodies.map(b => getPaintPos(b.pos));
+    if (canvasMode) {
+      lastPaintPos      = bodies.map(b => worldToScreen(b.pos));
+      lastPaintWorldPos = bodies.map(b => b.pos.clone());
+    }
     clearPaintCanvas();
   });
 
