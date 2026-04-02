@@ -34,10 +34,11 @@ let trailVisible = 350;   // how many trail points to show (MAX_HISTORY = all)
 let focusedBody = null;   // null | 0 | 1 | 2
 
 // Canvas / paint mode
-let canvasMode = false;
-let brushStyle  = 0;      // 0=round 1=calligraphy 2=spray 3=ink 4=marker
+let canvasMode  = false;
+let brushStyle  = 0;        // 0=round 1=calligraphy 2=spray 3=ink 4=marker
+let paintMode   = 'world';  // 'world' = fixed XZ projection | 'screen' = live camera
 let paintCtx    = null;
-let lastScreenPos = [];   // THREE.Vector2 per body, screen coords
+let lastPaintPos = [];      // THREE.Vector2 per body (screen or canvas coords)
 
 const BRUSH_COLORS = ['#cc2200', '#1155ee', '#cc8800'];
 
@@ -203,6 +204,7 @@ function makeGlowTexture(size = 128) {
 
 // ─── Paint / Canvas Mode ──────────────────────────────────────────────────────
 
+// Project through the live camera (painting follows camera rotation)
 function worldToScreen(pos) {
   const v = new THREE.Vector3(pos.x, pos.y, pos.z);
   v.project(camera);
@@ -210,6 +212,20 @@ function worldToScreen(pos) {
     (v.x + 1) / 2 * window.innerWidth,
     (-v.y + 1) / 2 * window.innerHeight
   );
+}
+
+// Fixed top-down XZ projection (painting is independent of camera)
+function worldToCanvas(pos) {
+  const pc = document.getElementById('paintCanvas');
+  const scale = Math.min(pc.width, pc.height) / GRID_SIZE;
+  return new THREE.Vector2(
+    pc.width  / 2 + pos.x * scale,
+    pc.height / 2 + pos.z * scale   // z → vertical axis on canvas
+  );
+}
+
+function getPaintPos(pos) {
+  return paintMode === 'world' ? worldToCanvas(pos) : worldToScreen(pos);
 }
 
 function clearPaintCanvas() {
@@ -318,7 +334,7 @@ function toggleCanvasMode() {
     pc.style.display = 'block';
     paintCtx = pc.getContext('2d');
     clearPaintCanvas();
-    lastScreenPos = bodies.map(b => worldToScreen(b.pos));
+    lastPaintPos = bodies.map(b => getPaintPos(b.pos));
 
     scene.background = new THREE.Color(0xf5f5f0);
     scene.fog = null;
@@ -628,9 +644,9 @@ function animate() {
   // Paint brush strokes on 2D canvas
   if (canvasMode && paintCtx) {
     for (let i = 0; i < bodies.length; i++) {
-      const cur = worldToScreen(bodies[i].pos);
-      drawBrushStroke(i, lastScreenPos[i], cur);
-      lastScreenPos[i] = cur;
+      const cur = getPaintPos(bodies[i].pos);
+      drawBrushStroke(i, lastPaintPos[i], cur);
+      lastPaintPos[i] = cur;
     }
   }
 
@@ -695,6 +711,16 @@ function bindUI() {
   document.getElementById('canvasModeBtn').addEventListener('click', toggleCanvasMode);
 
   document.getElementById('clearPaintBtn').addEventListener('click', clearPaintCanvas);
+
+  const paintModeBtn = document.getElementById('paintModeBtn');
+  paintModeBtn.addEventListener('click', () => {
+    paintMode = paintMode === 'world' ? 'screen' : 'world';
+    paintModeBtn.textContent = paintMode === 'world' ? 'WORLD' : 'SCREEN';
+    paintModeBtn.classList.toggle('active', paintMode === 'world');
+    // reset last positions to avoid streak on mode switch
+    if (canvasMode) lastPaintPos = bodies.map(b => getPaintPos(b.pos));
+    clearPaintCanvas();
+  });
 
   for (let i = 0; i < 5; i++) {
     document.getElementById(`brush${i}`).addEventListener('click', () => {
