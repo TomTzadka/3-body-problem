@@ -679,22 +679,20 @@ function animate() {
 // ─── UI ───────────────────────────────────────────────────────────────────────
 
 function saveImage() {
-  const merged = document.createElement('canvas');
-  merged.width  = window.innerWidth;
-  merged.height = window.innerHeight;
-  const ctx = merged.getContext('2d');
+  const pc = document.getElementById('paintCanvas');
+  const out = document.createElement('canvas');
+  out.width  = pc.width;
+  out.height = pc.height;
+  const ctx = out.getContext('2d');
 
-  // Draw the 3D scene
-  ctx.drawImage(renderer.domElement, 0, 0);
-
-  // Overlay the paint canvas if active
-  if (canvasMode && paintCtx) {
-    ctx.drawImage(document.getElementById('paintCanvas'), 0, 0);
-  }
+  // White background + only the brush strokes
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(pc, 0, 0);
 
   const link = document.createElement('a');
   link.download = `three-body-${Date.now()}.png`;
-  link.href = merged.toDataURL('image/png');
+  link.href = out.toDataURL('image/png');
   link.click();
 }
 
