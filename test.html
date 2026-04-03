@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3-Body Problem — Unit Tests</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a12;
+      color: #c8d8f0;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      padding: 24px;
+      line-height: 1.6;
+    }
+
+    h1 {
+      color: #aaccff;
+      font-size: 18px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    #meta {
+      color: #4466aa;
+      font-size: 11px;
+      letter-spacing: 1px;
+      margin-bottom: 24px;
+    }
+
+    /* ── summary bar ── */
+    #summary {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+      padding: 12px 16px;
+      border-radius: 6px;
+      margin-bottom: 28px;
+      font-size: 14px;
+      letter-spacing: 1px;
+      border: 1px solid transparent;
+    }
+    #summary.all-pass {
+      background: rgba(0, 100, 40, 0.25);
+      border-color: rgba(0, 200, 80, 0.35);
+      color: #44dd88;
+    }
+    #summary.has-fail {
+      background: rgba(100, 10, 10, 0.30);
+      border-color: rgba(220, 50, 50, 0.40);
+      color: #ff6666;
+    }
+    #summary .stat { display: flex; flex-direction: column; align-items: center; }
+    #summary .stat .num  { font-size: 26px; font-weight: bold; line-height: 1; }
+    #summary .stat .lbl  { font-size: 10px; color: inherit; opacity: 0.75; letter-spacing: 2px; }
+    #summary .pass-num   { color: #44dd88; }
+    #summary .fail-num   { color: #ff5555; }
+    #summary .total-num  { color: #88aaff; }
+
+    /* ── describe groups ── */
+    .group {
+      margin-bottom: 18px;
+      border: 1px solid rgba(0, 80, 200, 0.18);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .group-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      background: rgba(0, 40, 120, 0.28);
+      cursor: pointer;
+      user-select: none;
+    }
+    .group-header:hover { background: rgba(0, 60, 150, 0.35); }
+
+    .group-name {
+      color: #88bbff;
+      font-size: 12px;
+      letter-spacing: 1px;
+      flex: 1;
+    }
+
+    .group-badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      letter-spacing: 1px;
+    }
+    .badge-pass { background: rgba(0,150,60,0.35);  color: #44dd88; }
+    .badge-fail { background: rgba(180,20,20,0.40); color: #ff6666; }
+
+    .group-chevron {
+      color: #4466aa;
+      font-size: 10px;
+      transition: transform 0.18s;
+    }
+    .group.collapsed .group-chevron { transform: rotate(-90deg); }
+
+    /* ── test list ── */
+    .test-list {
+      list-style: none;
+      padding: 0;
+    }
+    .group.collapsed .test-list { display: none; }
+
+    .test-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 6px 14px;
+      border-top: 1px solid rgba(0,60,160,0.12);
+    }
+
+    .test-icon { flex-shrink: 0; width: 14px; text-align: center; margin-top: 1px; }
+    .pass .test-icon { color: #44dd88; }
+    .fail .test-icon { color: #ff5555; }
+
+    .test-name { flex: 1; color: #99bbdd; }
+    .fail .test-name { color: #ffaaaa; }
+
+    .test-error {
+      display: block;
+      margin-top: 3px;
+      padding: 4px 8px;
+      background: rgba(120, 0, 0, 0.25);
+      border-left: 3px solid #cc3333;
+      border-radius: 3px;
+      font-size: 11px;
+      color: #ff9999;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* ── controls ── */
+    .controls {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 10px;
+    }
+
+    button {
+      padding: 7px 16px;
+      background: rgba(0, 60, 180, 0.30);
+      border: 1px solid rgba(0, 100, 255, 0.40);
+      border-radius: 5px;
+      color: #88aaff;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      letter-spacing: 1px;
+      cursor: pointer;
+    }
+    button:hover { background: rgba(0, 80, 220, 0.45); color: #cce0ff; }
+
+    /* filter tabs */
+    .filter-btn.active {
+      background: rgba(0, 100, 255, 0.40);
+      border-color: #4488ff;
+      color: #cce0ff;
+    }
+
+    #results { }
+  </style>
+</head>
+<body>
+
+<h1>3-Body Problem — Unit Tests</h1>
+<div id="meta">physics.test.js &nbsp;|&nbsp; no build step &nbsp;|&nbsp; ES modules</div>
+
+<div id="summary">
+  <div class="stat"><span class="num total-num" id="s-total">–</span><span class="lbl">TOTAL</span></div>
+  <div class="stat"><span class="num pass-num"  id="s-pass">–</span><span class="lbl">PASSED</span></div>
+  <div class="stat"><span class="num fail-num"  id="s-fail">–</span><span class="lbl">FAILED</span></div>
+  <div id="s-status" style="margin-left:auto;font-size:16px;letter-spacing:2px"></div>
+</div>
+
+<div class="controls">
+  <button class="filter-btn active" data-filter="all">ALL</button>
+  <button class="filter-btn"       data-filter="pass">PASSING</button>
+  <button class="filter-btn"       data-filter="fail">FAILING</button>
+  <button id="collapseAll">COLLAPSE ALL</button>
+  <button id="expandAll">EXPAND ALL</button>
+</div>
+
+<div id="results"></div>
+
+<script type="module">
+  import { suite } from './physics.test.js';
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  let currentFilter = 'all';
+
+  function render() {
+    const container = document.getElementById('results');
+    container.innerHTML = '';
+
+    let totalPass = 0, totalFail = 0;
+
+    suite.forEach(group => {
+      const groupPass = group.tests.filter(t => t.passed).length;
+      const groupFail = group.tests.filter(t => !t.passed).length;
+      totalPass += groupPass;
+      totalFail += groupFail;
+
+      // Apply filter: hide group entirely if it has no matching tests
+      const visibleTests = group.tests.filter(t => {
+        if (currentFilter === 'pass') return t.passed;
+        if (currentFilter === 'fail') return !t.passed;
+        return true;
+      });
+      if (visibleTests.length === 0) return;
+
+      const allPass = groupFail === 0;
+
+      const groupEl = document.createElement('div');
+      groupEl.className = 'group';
+
+      // Header
+      const header = document.createElement('div');
+      header.className = 'group-header';
+      header.innerHTML = `
+        <span class="group-chevron">▼</span>
+        <span class="group-name">${escHtml(group.name)}</span>
+        <span class="group-badge ${allPass ? 'badge-pass' : 'badge-fail'}">
+          ${groupPass}/${group.tests.length}
+        </span>
+      `;
+      header.addEventListener('click', () => groupEl.classList.toggle('collapsed'));
+      groupEl.appendChild(header);
+
+      // Test list
+      const list = document.createElement('ul');
+      list.className = 'test-list';
+
+      visibleTests.forEach(t => {
+        const li = document.createElement('li');
+        li.className = `test-item ${t.passed ? 'pass' : 'fail'}`;
+
+        const icon = t.passed ? '✓' : '✗';
+        let html = `
+          <span class="test-icon">${icon}</span>
+          <span class="test-name">
+            <span>${escHtml(t.name)}</span>
+            ${t.error ? `<span class="test-error">${escHtml(t.error)}</span>` : ''}
+          </span>
+        `;
+        li.innerHTML = html;
+        list.appendChild(li);
+      });
+
+      groupEl.appendChild(list);
+      container.appendChild(groupEl);
+    });
+
+    // Summary
+    const total = totalPass + totalFail;
+    document.getElementById('s-total').textContent = total;
+    document.getElementById('s-pass').textContent  = totalPass;
+    document.getElementById('s-fail').textContent  = totalFail;
+
+    const summaryEl  = document.getElementById('summary');
+    const statusEl   = document.getElementById('s-status');
+    if (totalFail === 0) {
+      summaryEl.className = 'all-pass';
+      statusEl.textContent = 'ALL TESTS PASSED';
+      statusEl.style.color = '#44dd88';
+    } else {
+      summaryEl.className = 'has-fail';
+      statusEl.textContent = `${totalFail} TEST${totalFail > 1 ? 'S' : ''} FAILED`;
+      statusEl.style.color = '#ff5555';
+    }
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ── Filter buttons ────────────────────────────────────────────────────────
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      render();
+    });
+  });
+
+  document.getElementById('collapseAll').addEventListener('click', () => {
+    document.querySelectorAll('.group').forEach(g => g.classList.add('collapsed'));
+  });
+
+  document.getElementById('expandAll').addEventListener('click', () => {
+    document.querySelectorAll('.group').forEach(g => g.classList.remove('collapsed'));
+  });
+
+  // ── Initial render ────────────────────────────────────────────────────────
+  render();
+
+  // Also log results to the browser console for CI / headless use
+  let pass = 0, fail = 0;
+  suite.forEach(group => {
+    group.tests.forEach(t => {
+      if (t.passed) {
+        pass++;
+        console.log(`  PASS  ${group.name} > ${t.name}`);
+      } else {
+        fail++;
+        console.error(`  FAIL  ${group.name} > ${t.name}\n        ${t.error}`);
+      }
+    });
+  });
+  console.info(`\n${pass + fail} tests: ${pass} passed, ${fail} failed`);
+</script>
+
+</body>
+</html>
